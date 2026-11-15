@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Property Scorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout: phone-first single column; on wide screens a property list rail beside the scoring sheet. Sticky score bar on top of the sheet. */
+/* Palette: cool greys + one navy accent. Red is reserved for a failed gate. */
+:root{
+  --bg:#f5f6f8; --surface:#ffffff; --ink:#1d2433; --muted:#667085; --line:#e3e6eb;
+  --accent:#24426b; --accent-soft:#eef2f8;
+  --bad:#b42318; --bad-soft:#fdf1f0;
+  --good:var(--accent); --good-soft:var(--accent-soft); --warn:var(--ink); --warn-soft:var(--bg);
+  --font-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --font-num:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  --radius:10px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#111418; --surface:#191d23; --ink:#e6e8eb; --muted:#9aa3ae; --line:#2a3038;
+    --accent:#9bb7de; --accent-soft:#1f2937;
+    --bad:#f0857a; --bad-soft:#3a1f1d;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#111418; --surface:#191d23; --ink:#e6e8eb; --muted:#9aa3ae; --line:#2a3038;
+  --accent:#9bb7de; --accent-soft:#1f2937;
+  --bad:#f0857a; --bad-soft:#3a1f1d;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.45}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+h1,h2,h3{text-wrap:balance;margin:0}
+.num{font-family:var(--font-num);font-variant-numeric:tabular-nums}
+
+.app{max-width:1180px;margin:0 auto;padding:16px;display:grid;gap:16px;grid-template-columns:1fr}
+@media (min-width:900px){.app{grid-template-columns:300px 1fr;align-items:start}}
+
+header.top{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;justify-content:space-between}
+header.top h1{font-size:1.35rem;font-weight:700;letter-spacing:-.01em}
+header.top p{margin:0;color:var(--muted);font-size:.9rem}
+.status{font-size:.78rem;padding:3px 10px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--muted);white-space:nowrap}
+.status::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent);margin-right:6px;vertical-align:1px}
+.status.local::before{background:var(--muted)}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius)}
+.rail{display:flex;flex-direction:column;gap:10px;padding:12px}
+@media (min-width:900px){.rail{position:sticky;top:16px}}
+.rail-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.rail-head h2{font-size:.95rem}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:7px 12px;font-weight:500}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.btn.danger{color:var(--bad);border-color:var(--bad-soft)}
+.btn.small{padding:4px 10px;font-size:.85rem}
+.plist{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.pcard{width:100%;text-align:left;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 10px;display:grid;grid-template-columns:1fr auto;gap:2px 8px}
+.pcard[aria-current="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.pcard .pn{font-weight:600;overflow-wrap:anywhere}
+.pcard .pt{color:var(--muted);font-size:.8rem}
+.pcard .ps{grid-row:1/3;grid-column:2;text-align:right;font-size:.8rem;color:var(--muted)}
+.pcard .ps b{display:block;font-size:1rem;color:var(--ink)}
+.tabs{display:flex;gap:4px;background:var(--bg);border-radius:8px;padding:3px}
+.tabs button{flex:1;border:0;background:transparent;border-radius:6px;padding:6px 8px;font-weight:500;color:var(--muted)}
+.tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+
+.sheet{display:flex;flex-direction:column;gap:12px;min-width:0}
+.meta{padding:12px;display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:.78rem;color:var(--muted);font-weight:500}
+.field input,.field select,.field textarea{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 10px;width:100%}
+.field.wide{grid-column:1/-1}
+.field textarea{min-height:56px;resize:vertical}
+
+.scorebar{position:sticky;top:0;z-index:5;padding:12px;display:grid;gap:10px;grid-template-columns:1fr 1fr;box-shadow:0 4px 14px rgba(0,0,0,.06)}
+.score{display:flex;flex-direction:column;gap:4px}
+.score .lbl{font-size:.78rem;color:var(--muted);font-weight:500}
+.score .val{font-size:1.9rem;font-weight:600;line-height:1}
+.score .val small{font-size:.9rem;color:var(--muted);font-weight:500}
+.meter{height:6px;background:var(--bg);border-radius:4px;overflow:hidden}
+.meter i{display:block;height:100%;background:var(--accent);border-radius:4px;transition:width .2s}
+.band{font-size:.8rem;font-weight:500;color:var(--muted)}
+.verdict{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:.85rem}
+.pill{display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border-radius:999px;font-weight:500;font-size:.8rem;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+.pill.good{color:var(--accent);border-color:var(--accent)}
+.pill.warn{color:var(--ink)}
+.pill.bad{background:var(--bad-soft);color:var(--bad);border-color:var(--bad)}
+.pill.neutral{color:var(--muted)}
+.c-good,.c-warn{color:var(--muted)} .c-bad{color:var(--bad)}
+
+details.section{overflow:hidden}
+details.section>summary{list-style:none;padding:12px;display:grid;grid-template-columns:1fr auto;gap:4px 12px;cursor:pointer}
+details.section>summary::-webkit-details-marker{display:none}
+details.section>summary h3{font-size:1rem}
+.sum-sub{font-size:.8rem;color:var(--muted)}
+.sum-pts{grid-row:1/3;grid-column:2;text-align:right;font-size:.8rem;color:var(--muted)}
+.sum-pts b{font-size:.95rem;color:var(--ink)}
+details.section[open]>summary{border-bottom:1px solid var(--line)}
+.items{display:flex;flex-direction:column}
+.item{padding:10px 12px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.item:last-child{border-bottom:0}
+.item.gate{box-shadow:inset 3px 0 0 var(--accent)}
+.item.gate.fail{box-shadow:inset 3px 0 0 var(--bad);background:var(--bad-soft)}
+.ihead{display:flex;gap:8px;align-items:baseline;justify-content:space-between}
+.ihead .it{font-weight:600}
+.ihead .iid{color:var(--muted);font-size:.78rem;margin-right:6px}
+.gbadge{font-size:.68rem;font-weight:600;letter-spacing:.06em;padding:1px 6px;border-radius:4px;border:1px solid var(--accent);color:var(--accent);white-space:nowrap}
+.rates{display:flex;gap:4px;flex-wrap:wrap}
+.rates button{min-width:40px;height:36px;border:1px solid var(--line);background:var(--bg);border-radius:7px;font-family:var(--font-num);font-weight:600}
+.rates button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.rates button.unk[aria-pressed="true"]{background:var(--muted);border-color:var(--muted)}
+.rates button.zero[aria-pressed="true"]{background:var(--bad);border-color:var(--bad)}
+.hint{font-size:.83rem;color:var(--muted);display:grid;gap:2px}
+.hint b{color:var(--ink);font-weight:600}
+.guide-toggle{border:0;background:none;color:var(--accent);font-size:.8rem;padding:0;text-align:left;width:max-content}
+
+.compare{padding:12px;overflow-x:auto}
+.compare table{width:100%;border-collapse:collapse;font-size:.9rem;min-width:560px}
+.compare th,.compare td{text-align:left;padding:8px;border-bottom:1px solid var(--line);vertical-align:top}
+.compare th{font-size:.78rem;color:var(--muted);font-weight:500}
+.compare td.n{text-align:right}
+.compare tr.click{cursor:pointer}
+.compare tr.click:hover td{background:var(--accent-soft)}
+.legend{padding:12px;font-size:.85rem;color:var(--muted);display:grid;gap:4px}
+.legend b{color:var(--ink)}
+.banner{padding:10px 12px;border-radius:var(--radius);background:var(--accent-soft);color:var(--ink);font-size:.88rem;display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.confirm{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:.85rem}
+.empty{color:var(--muted);font-size:.88rem;padding:6px 2px}
+.guide{padding:16px;display:flex;flex-direction:column;gap:14px;max-width:72ch}
+.guide h2{font-size:1.05rem}
+.guide h3{font-size:.95rem;margin-top:4px}
+.guide p,.guide li{margin:0;color:var(--ink)}
+.guide ol,.guide ul{margin:0;padding-left:20px;display:grid;gap:4px}
+.guide .muted{color:var(--muted);font-size:.88rem}
+.guide table{border-collapse:collapse;font-size:.88rem;width:100%}
+.guide th,.guide td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+.guide th{font-size:.78rem;color:var(--muted);font-weight:500}
+.guide td.n,.guide th.n{text-align:right}
+.guide .tw{overflow-x:auto}
+.guide-types{display:flex;gap:6px;flex-wrap:wrap}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div>
+      <h1>Property Scorer</h1>
+      <p>Rate each item 0–5 as you walk the property. Unknown counts as 3 until you check it.</p>
+    </div>
+    <span id="status" class="status local">Saved in this browser only</span>
+  </header>
+
+  <aside class="panel rail" aria-label="Your properties">
+    <div class="rail-head">
+      <h2>Your properties</h2>
+      <button class="btn primary small" id="newBtn" type="button">+ New</button>
+    </div>
+    <div class="tabs" role="tablist">
+      <button role="tab" id="tabScore" aria-selected="true" type="button">Score</button>
+      <button role="tab" id="tabCompare" aria-selected="false" type="button">Compare</button>
+      <button role="tab" id="tabGuide" aria-selected="false" type="button">Guide</button>
+    </div>
+    <ul class="plist" id="plist"></ul>
+  </aside>
+
+  <main class="sheet" id="sheet"></main>
+</div>
+
+<script>
+/* ---------- Checklist data ---------- */
+function I(id,gate,check,five,zero,ask){return {id,gate,check,five,zero,ask};}
+function S(id,name,ws,wi,items){return {id,name,ws,wi,items};}
+const TYPES={
+ resale:{label:"Resale flat",sections:[
+  S("R1","Legal and documents",15,15,[
+   I("R1.1",1,"Title chain","Clean 30-year chain, lawyer's clear opinion","Gaps, GPA sale, dispute","All previous sale deeds"),
+   I("R1.2",1,"Khata","A-khata / e-khata in seller's name","B-khata, or still in builder's name","e-khata certificate and extract"),
+   I("R1.3",1,"Occupancy Certificate","Full OC for the building","No OC","OC copy and sanctioned plan"),
+   I("R1.4",1,"Encumbrance","EC clean for 30 years","Active loan or claim not being closed","30-year EC"),
+   I("R1.5",0,"Property tax","Paid to current year","Arrears","Last 3 years' receipts"),
+   I("R1.6",0,"Seller's loan","None, or bank releases papers at sale","Unclear","Bank outstanding letter"),
+   I("R1.7",0,"Association dues","NOC, no dues","Pending dues or levies","Association NOC"),
+   I("R1.8",0,"Plan deviation","Built as sanctioned","Extra floors or violations","Sanctioned plan")]),
+  S("R2","Location and commute",25,20,[
+   I("R2.1",0,"Commute to your work","Walk or under 15 min","Over 45 min at peak","Drive it at 9 am and 6 pm"),
+   I("R2.2",0,"Job hubs nearby","Large tech park within 2 km","No offices within 10 km","Which offices, growing or shrinking?"),
+   I("R2.3",0,"Metro / transit","Running station within 1 km","Only \"planned\"","Line and station status"),
+   I("R2.4",0,"Approach road and traffic","Wide road, two exits, quiet","Narrow lane, jams, main-road noise","Visit at peak hour and at night"),
+   I("R2.5",0,"Flooding history","Never flooded","Area or basement flooded recently","Ask neighbours, not the broker"),
+   I("R2.6",0,"Schools, hospitals, shops","All within 3 km","Long drive for everything","Name the nearest of each"),
+   I("R2.7",0,"Nuisances","None","Garbage site, HT lines, flyover, flight path","Walk 500 m around")]),
+  S("R3","Building age and condition",15,10,[
+   I("R3.1",0,"Age","Under 5 years","Over 20 years","OC date"),
+   I("R3.2",1,"Structure","No cracks or rust in beams, pillars, basement","Structural cracks, exposed rusted steel","Inspect basement pillars and ceilings"),
+   I("R3.3",0,"Seepage","Completely dry","Damp walls, terrace or bathroom leaks","Check under sinks, bathroom ceilings, top floor"),
+   I("R3.4",0,"Plumbing and wiring","Recently upgraded","Original and failing","When last replaced?"),
+   I("R3.5",0,"Lifts","Recent or well maintained, AMC","Old, frequent breakdowns","Make, year, AMC, breakdowns"),
+   I("R3.6",0,"Fire safety","Working systems, valid NOC","Dead systems","Last fire audit"),
+   I("R3.7",0,"Builder's other old projects","Aged well","Poorly maintained","Visit one 10+ years old")]),
+  S("R4","Water, power, utilities",10,5,[
+   I("R4.1",0,"Water source","Cauvery plus borewell","Tankers only","Last summer's tanker bill"),
+   I("R4.2",0,"Water quality","Treated, tested","Hard, untested","Water test report"),
+   I("R4.3",0,"Sewage / STP","Working STP or sewer line","Broken STP, smell","STP service record"),
+   I("R4.4",0,"Power backup","Full flat backup","Common areas only","kVA per flat"),
+   I("R4.5",0,"Gas, internet, EV","Piped gas, several fibre ISPs, EV points","None","Ask the facility manager")]),
+  S("R5","Association and maintenance",10,5,[
+   I("R5.1",0,"Association governance","Registered, elected, audited yearly","Builder-controlled, no audits","Last 2 audited accounts, AGM minutes"),
+   I("R5.2",0,"Sinking fund","Healthy, covers planned big repairs","Little or none","Fund balance and repair plan"),
+   I("R5.3",0,"Maintenance charge","Reasonable and stable","Very high, rising fast, or suspiciously low","Rate per sq ft, last increases, levies"),
+   I("R5.4",0,"Amenities working","All maintained and in use","Shut or broken","Visit clubhouse, pool, gym"),
+   I("R5.5",0,"Density and open space","Under 60 units per acre, green","Over 80 units per acre","Total units and land area"),
+   I("R5.6",0,"Owners vs tenants","Mostly owners","Mostly tenants","Rough share")]),
+  S("R6","The flat itself",15,10,[
+   I("R6.1",0,"Carpet vs super built-up","Loading under 25%","Over 30%","Carpet area in deed; measure rooms"),
+   I("R6.2",0,"Floor","Middle or upper floor","Ground (damp) or top (heat, leaks)","Which floor?"),
+   I("R6.3",0,"Light and ventilation","East or north, cross-ventilation","Dark, facing another tower","Visit morning and evening"),
+   I("R6.4",0,"Layout","No waste, usable balcony, utility area","Odd shapes, tiny rooms","Fit bed + wardrobe in bedroom 2?"),
+   I("R6.5",0,"View","Permanent open view","Vacant plot opposite","What's planned opposite?"),
+   I("R6.6",0,"Parking","Covered, allotted in deed","Open, unallotted, tandem","Slot number in deed"),
+   I("R6.7",0,"Size for 7–10 years","Fits your future family","Will outgrow soon","Your plan"),
+   I("R6.8",0,"Interiors","Good, keep as is","Need full redo","What's included in the price?")]),
+  S("R7","Price and affordability",10,15,[
+   I("R7.1",0,"Price vs registered sales","5%+ below recent sales in same building","10%+ above every recent sale","Sale prices from last 6–12 months (Kaveri portal, association)"),
+   I("R7.2",0,"Renovation cost","Under ₹2 L","Over ₹10 L","Contractor quote"),
+   I("R7.3",0,"Loan eligibility","20-year loan from major banks","Shorter tenure or lower amount","In-principle sanction from 2–3 banks"),
+   I("R7.4",0,"EMI vs income","EMI under 35% of take-home","Over 50%","Your numbers"),
+   I("R7.5",0,"Emergency fund after purchase","6+ months of EMI and expenses","Nothing left","Your numbers")]),
+  S("R8","Rent and resale potential",0,20,[
+   I("R8.1",0,"Gross rental yield","4%+ a year","Under 2.5%","Current rents in the building"),
+   I("R8.2",0,"Tenant demand","Rents out within 2 weeks","Sits empty for months","Ask 2 local brokers"),
+   I("R8.3",0,"Resale speed","Flats sell in 1–3 months","Listings sit for a year","Flats sold last year"),
+   I("R8.4",0,"Area price trend","Rising steadily over 5 years","Flat or falling","Past and present prices"),
+   I("R8.5",0,"Future demand drivers","New offices, metro, roads coming","Nothing new coming","What's under construction nearby")])
+ ]},
+ newflat:{label:"New / under-construction flat",sections:[
+  S("N1","Legal, RERA and approvals",15,15,[
+   I("N1.1",1,"RERA registration","Registered, quarterly updates filed","Not registered","RERA number; check on Karnataka RERA site yourself"),
+   I("N1.2",1,"Land title","Builder or JDA owner has clean title, lawyer clear","Disputed land, unclear JDA","Title deeds, joint development agreement"),
+   I("N1.3",1,"Plan sanction","Building plan approved","\"Approval in process\"","Sanctioned plan"),
+   I("N1.4",0,"Environmental and other clearances","All in place","Pending","Clearance copies"),
+   I("N1.5",0,"Litigation","No cases on land or project","Active cases","Lawyer's court search"),
+   I("N1.6",0,"Bank approval","Major banks have approved the project","No major bank","Ask 2–3 banks"),
+   I("N1.7",0,"Agreement terms","Fair delay penalty, carpet area stated","One-sided terms","Draft sale agreement")]),
+  S("N2","Builder track record and delivery risk",15,15,[
+   I("N2.1",0,"On-time delivery history","Last 3 Bangalore projects on time","Delays of 2+ years","Actual handover dates"),
+   I("N2.2",0,"Build quality of past projects","Aged well","Seepage, cracks, complaints","Visit a 5+ year old project by them"),
+   I("N2.3",0,"Construction progress","Matches schedule","Site idle or behind","RERA quarterly progress, site visit"),
+   I("N2.4",0,"Possession date","RERA date realistic and close","Sales team promises earlier than RERA","Date in agreement"),
+   I("N2.5",0,"Builder finances","Strong, listed or well-funded","Stalled projects elsewhere","News, other projects' status"),
+   I("N2.6",0,"Buyer complaints","Few, resolved","Many RERA complaints","RERA complaint search, owner forums")]),
+  S("N3","Location and commute",25,15,[
+   I("N3.1",0,"Commute to your work","Under 30 min at peak","Over 75 min","Drive it at peak hour"),
+   I("N3.2",0,"Job hubs nearby","Offices within 5 km","Nothing within 15 km","Which employers nearby"),
+   I("N3.3",0,"Transit","Running metro or rail within 2 km","Only planned","Status of each line"),
+   I("N3.4",0,"Approach road","Wide, paved, lit","Kaccha road, single access","Visit after dark"),
+   I("N3.5",0,"Schools, hospitals, shops","Within 5 km","Long drive","Name the nearest"),
+   I("N3.6",0,"Flooding and nuisances","None","Low-lying, quarry, landfill, HT lines","Walk around the site")]),
+  S("N4","Area infrastructure (now vs promised)",10,10,[
+   I("N4.1",0,"Water supply plan","Cauvery line confirmed","Borewell and tanker only","Builder's water source in writing"),
+   I("N4.2",0,"Promised infrastructure","Already under construction","Only announced","Which roads/metro are actually being built"),
+   I("N4.3",0,"Neighbourhood maturity","Already lived-in area","Empty fields around","How many occupied projects nearby"),
+   I("N4.4",0,"Supply in the area","Few competing launches","Thousands of units launching nearby","Count nearby launches")]),
+  S("N5","Project design and density",10,5,[
+   I("N5.1",0,"Density","Under 60 units per acre","Over 90 units per acre","Total units, land area"),
+   I("N5.2",0,"Open space and tower gaps","Wide gaps, large green areas","Towers close together","Master plan with distances"),
+   I("N5.3",0,"Amenities","Realistic, included in price","Too many promises, extra charges","What's in phase 1 vs later"),
+   I("N5.4",0,"Lifts per tower","1 lift per 20–30 flats or better","Too few","Lift count and make"),
+   I("N5.5",0,"Parking","Covered, allotted, in agreement","Extra charge, unallotted","Parking terms")]),
+  S("N6","The unit",10,5,[
+   I("N6.1",0,"Carpet area efficiency","Carpet over 75% of super built-up","Under 70%","RERA carpet area"),
+   I("N6.2",0,"Layout","Efficient, cross-ventilated","Wasted space, tiny rooms","Floor plan with dimensions"),
+   I("N6.3",0,"Facing and view","East/north, permanent open view","Facing another tower","Tower and unit position on plan"),
+   I("N6.4",0,"Floor","Middle to upper","Ground or top floor","Which floor"),
+   I("N6.5",0,"Specifications","Branded fittings written in agreement","Vague specs","Spec sheet in agreement")]),
+  S("N7","Price and cost transparency",15,15,[
+   I("N7.1",0,"All-inclusive cost sheet","One written all-in price","Extras added later","Full cost sheet in writing"),
+   I("N7.2",0,"GST and charges","GST, club, BESCOM, BWSSB, corpus all shown","Hidden","Line by line"),
+   I("N7.3",0,"Price vs nearby ready flats","Below ready flats of similar quality","Above ready flats nearby","Compare ready flats in the area"),
+   I("N7.4",0,"Rent while waiting","Under 2 years to possession","4+ years of rent on top of EMI","Rent × months to possession"),
+   I("N7.5",0,"Payment plan","Construction-linked","Heavy upfront","Payment schedule"),
+   I("N7.6",0,"Affordability","EMI under 35% of take-home, emergency fund intact","Over 50%, savings drained","Your numbers")]),
+  S("N8","Rent and appreciation potential",0,20,[
+   I("N8.1",0,"Expected rent at possession","3.5%+ yield","Under 2.5%","Rents in nearby completed projects"),
+   I("N8.2",0,"Resale at possession","Area resale prices above launch price","Resale below launch price","Resale prices in builder's older nearby projects"),
+   I("N8.3",0,"Demand drivers","Offices, airport, metro actually coming","Hype only","What's under construction"),
+   I("N8.4",0,"Exit competition","Few investors in project","Many investors selling at possession","Share of investor buyers")])
+ ]},
+ plot:{label:"Plot / site",sections:[
+  S("P1","Legal and approvals",25,25,[
+   I("P1.1",1,"Title chain","Clean 30+ year chain, lawyer's clear opinion","Gaps, GPA, disputes, owners not signing","All sale deeds, RTC / pahani history"),
+   I("P1.2",1,"Land conversion","Converted for residential use","Agricultural land","DC conversion order"),
+   I("P1.3",1,"Layout approval","Planning-authority approved layout, plot released","Revenue site, \"approval coming\"","Approved layout plan, release order for this plot number"),
+   I("P1.4",1,"Encumbrance","Clean 30-year EC","Loans or claims","30-year EC"),
+   I("P1.5",0,"Khata","A-khata or e-khata","B-khata or panchayat e-swathu only","Khata extract"),
+   I("P1.6",0,"Litigation and acquisition","No cases, no road or govt acquisition notified","Case filed, land marked for road widening","Lawyer's search, master plan check"),
+   I("P1.7",0,"Bank loan","Major banks give plot loans here","No bank lends","Ask 2–3 banks")]),
+  S("P2","Location and access",20,15,[
+   I("P2.1",0,"Commute to work","Under 30 min","Over 75 min","Drive at peak hour"),
+   I("P2.2",0,"Main road access","Paved road to a highway or main road within 2 km","Kaccha or private road","Drive the approach"),
+   I("P2.3",0,"Transit","Metro or rail within 3 km, running","None","Status"),
+   I("P2.4",0,"Schools, hospitals, shops","Within 5 km","Over 10 km","Name the nearest"),
+   I("P2.5",0,"Flooding and nuisances","High ground, nothing nearby","Lake bed, drain, quarry, landfill, HT lines","Walk around, check lake maps")]),
+  S("P3","Layout infrastructure and neighbourhood",15,10,[
+   I("P3.1",0,"Roads in layout","Tar roads, drains, streetlights done","Mud roads, nothing done","Walk the layout"),
+   I("P3.2",0,"Water and sewer","Cauvery or reliable source, sewer line","None","Written commitment"),
+   I("P3.3",0,"Electricity","BESCOM lines in layout","Not yet","Check poles and transformer"),
+   I("P3.4",0,"Houses already built","Many occupied houses","Empty layout","Count built houses"),
+   I("P3.5",0,"Gated / security","Compound wall, security","Open","Ask")]),
+  S("P4","Plot specifications",15,10,[
+   I("P4.1",0,"Size","Standard size (30×40, 30×50, 40×60)","Odd, small size","Sketch dimensions"),
+   I("P4.2",0,"Shape","Regular rectangle","Irregular","Survey sketch"),
+   I("P4.3",0,"Facing","East or north","Facing that sells slowly locally","Sketch"),
+   I("P4.4",0,"Road width in front","30 ft or more","20 ft or less","Approved layout plan"),
+   I("P4.5",0,"Ground level","At or above road level","Below road, waterlogging","See it after rain"),
+   I("P4.6",0,"Boundaries","Marked, matches sketch","Encroached, unmarked","Get a surveyor")]),
+  S("P5","Price vs registered sales",10,15,[
+   I("P5.1",0,"Price vs recent sales","At or below registered sales in the same layout","15%+ above","Registered sale values (Kaveri portal)"),
+   I("P5.2",0,"Guidance value gap","Price not far above guidance value","Huge gap (cash demand risk)","Guidance value for the survey number"),
+   I("P5.3",0,"Affordability","Paid without draining savings","Savings drained","Your numbers")]),
+  S("P6","Appreciation drivers",5,20,[
+   I("P6.1",0,"Infrastructure under construction","Metro, ring road, offices actually being built","Only announced","Visit the sites"),
+   I("P6.2",0,"Past price trend","Steady rise over 5 years","Flat","Old and new sale prices"),
+   I("P6.3",0,"Supply of plots nearby","Limited","Many new layouts launching","Count nearby layouts"),
+   I("P6.4",0,"Resale liquidity","Plots in this layout resell easily","No resale buyers","Ask local brokers")]),
+  S("P7","Buildability and your timeline",10,5,[
+   I("P7.1",0,"Building permission","Easy to get plan sanction","Restrictions, height limits (airport zone)","Ask the planning authority"),
+   I("P7.2",0,"Construction deadline","None, or easy","Must build within a short time","Allotment conditions"),
+   I("P7.3",0,"Your plan","You know when you'll build and live there","No plan, money stuck idle","Your plan")])
+ ]},
+ house:{label:"Independent house",sections:[
+  S("H1","Legal and approvals",20,20,[
+   I("H1.1",1,"Title chain","Clean 30+ year chain, lawyer clear","Gaps, GPA, disputes","All sale deeds"),
+   I("H1.2",1,"Khata","A-khata / e-khata in seller's name","B-khata","Khata certificate and extract"),
+   I("H1.3",1,"Building plan sanction","Approved plan for all floors built","No sanction, or extra floors built","Sanctioned plan"),
+   I("H1.4",0,"Completion / Occupancy Certificate","CC / OC issued","None","CC / OC copy"),
+   I("H1.5",1,"Encumbrance","Clean 30-year EC","Loans or claims","30-year EC"),
+   I("H1.6",0,"Property tax and utility bills","Paid to date, in owner's name","Arrears, different names","Tax receipts, BESCOM and BWSSB bills"),
+   I("H1.7",0,"Setback and deviations","Meets setbacks and FAR","Violations that risk demolition notices","Compare plan with the building"),
+   I("H1.8",0,"Litigation, road widening","None","Case, or road-widening marked","Lawyer's search, master plan")]),
+  S("H2","Location",20,15,[
+   I("H2.1",0,"Commute to work","Under 20 min","Over 60 min","Drive at peak hour"),
+   I("H2.2",0,"Neighbourhood","Established, residential, safe","Commercialising, unsafe","Walk at night"),
+   I("H2.3",0,"Transit","Metro within 1.5 km","None","Station status"),
+   I("H2.4",0,"Schools, hospitals, shops","Within 3 km","Far","Name the nearest"),
+   I("H2.5",0,"Flooding and nuisances","Never floods, quiet","Floods, noise, garbage","Ask neighbours")]),
+  S("H3","Structure and construction quality",20,10,[
+   I("H3.1",0,"Age","Under 10 years","Over 25 years","Construction year"),
+   I("H3.2",1,"Structural soundness","No structural cracks, column-beam framed","Cracks, load-bearing walls only, rusted steel","Hire a structural engineer"),
+   I("H3.3",0,"Seepage and roof","Dry walls, waterproofed terrace","Damp, leaks","Inspect after rain"),
+   I("H3.4",0,"Plumbing and wiring","Recent, concealed, earthed","Old, overloaded","When last replaced"),
+   I("H3.5",0,"Foundation for extra floors","Designed for more floors","Can't take more load","Structural drawings"),
+   I("H3.6",0,"Construction quality","Good materials, square walls, good finish","Poor finish","Look at stairs, joints, doors")]),
+  S("H4","Water, power, drainage",10,5,[
+   I("H4.1",0,"Water source","Cauvery plus own borewell","Tankers only","Bills, borewell depth and yield"),
+   I("H4.2",0,"Sump and overhead tank","Large sump, clean tanks","Small or leaking","Inspect"),
+   I("H4.3",0,"Sewer connection","BWSSB sewer","Septic tank","Ask, inspect"),
+   I("H4.4",0,"Electricity","Separate meters per floor, enough load","Single old meter","BESCOM bills"),
+   I("H4.5",0,"Rainwater harvesting","Installed (mandatory in Bangalore)","Missing (penalty risk)","Inspect")]),
+  S("H5","Plot and house specifications",10,10,[
+   I("H5.1",0,"Road width","30 ft or more","20 ft or less","Measure"),
+   I("H5.2",0,"Plot size and shape","Standard, regular","Odd shape","Sketch"),
+   I("H5.3",0,"Facing","East or north","Facing that sells slowly locally","Sketch"),
+   I("H5.4",0,"FAR headroom","Can legally add floors","Already at maximum","Ask an architect"),
+   I("H5.5",0,"Layout of house","Practical, separate entrances for rental floors","Awkward","Walk every floor"),
+   I("H5.6",0,"Parking","Car parking inside the plot","Street parking only","Inspect")]),
+  S("H6","Price (land + building value)",15,15,[
+   I("H6.1",0,"Land value","Land price in line with recent site sales nearby","Well above site sales","Registered site sales nearby"),
+   I("H6.2",0,"Building value","Building priced at depreciated cost","Priced as new","Today's construction cost × remaining life"),
+   I("H6.3",0,"Repair cost","Under ₹3 L","Over ₹15 L","Contractor quote"),
+   I("H6.4",0,"Loan","Major banks lend","No bank lends","In-principle sanction"),
+   I("H6.5",0,"Affordability","EMI under 35% of take-home, savings intact","Over 50%, savings drained","Your numbers")]),
+  S("H7","Rent and resale potential",5,25,[
+   I("H7.1",0,"Rental floors","2+ separately rentable units","Single unit","Count units, separate meters"),
+   I("H7.2",0,"Rental yield","3.5%+ gross","Under 2%","Current rents, ask brokers"),
+   I("H7.3",0,"Tenant demand","Near offices or colleges","Low demand","Ask 2 brokers"),
+   I("H7.4",0,"Redevelopment value","Plot can be rebuilt bigger later","No upside","FAR and road width"),
+   I("H7.5",0,"Resale liquidity","Houses here sell within 3–6 months","Sit for a year","Ask brokers")])
+ ]}
+};
+const UNKNOWN_AS=3;
+
+/* ---------- Scoring ---------- */
+function scoreProperty(p){
+  const t=TYPES[p.type]; const r=p.ratings||{};
+  let self=0,inv=0,total=0,known=0;
+  const gates={pass:0,weak:0,fail:0,unknown:0};
+  const sections=t.sections.map(s=>{
+    let sum=0,rated=0;
+    s.items.forEach(it=>{
+      const v=r[it.id]; const has=typeof v==="number";
+      total++; if(has){known++;rated++;}
+      sum+= has?v:UNKNOWN_AS;
+      if(it.gate){ if(!has)gates.unknown++; else if(v===0)gates.fail++; else if(v<=2)gates.weak++; else gates.pass++; }
+    });
+    const avg=sum/s.items.length;
+    const ps=s.ws*avg/5, pi=s.wi*avg/5;
+    self+=ps; inv+=pi;
+    return {id:s.id,avg,ps,pi,rated,count:s.items.length};
+  });
+  return {self,inv,sections,gates,known,total};
+}
+function band(score){
+  if(score>=80) return {t:"Strong",c:"good"};
+  if(score>=65) return {t:"Good, negotiate weak spots",c:"good"};
+  if(score>=50) return {t:"Borderline",c:"warn"};
+  return {t:"Skip",c:"bad"};
+}
+function gateVerdict(g){
+  if(g.fail) return {t:`Do not buy: ${g.fail} gate failed`,c:"bad"};
+  if(g.unknown) return {t:`${g.unknown} gate${g.unknown>1?"s":""} unchecked, no token yet`,c:"warn"};
+  if(g.weak) return {t:`${g.weak} gate${g.weak>1?"s":""} weak, get a lawyer's view`,c:"warn"};
+  return {t:"All gates passed",c:"good"};
+}
+
+/* ---------- State ---------- */
+const EXAMPLE={id:"example-bren-unity",name:"Bren Unity 2 BHK, Doddanekundi",type:"resale",price:"₹1.18 Cr",visited:"2026-11-15",
+  notes:"Opposite the tech park. About 13 years old. 432 units on 5 acres. Example from the checklist doc, edit to make it yours.",
+  ratings:{"R2.1":5,"R2.2":5,"R3.1":2,"R5.5":1,"R8.1":4,"R8.2":5},example:true,updated:0};
+let props=[]; let currentId=null; let view="score"; let openSections=new Set(); let openGuides=new Set(); let confirmDelete=false;
+let store=null; // {kind:'db'|'local', save(p), remove(id)}
+
+function uid(){return "p"+Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+function current(){return props.find(p=>p.id===currentId)||null;}
+
+/* ---------- Storage ---------- */
+const LS_KEY="property-scorer-v1";
+const localStore={kind:"local",
+  load(){try{const raw=localStorage.getItem(LS_KEY);return raw?JSON.parse(raw):[];}catch(e){return [];}},
+  saveAll(){try{localStorage.setItem(LS_KEY,JSON.stringify(props.filter(p=>!p.example)));}catch(e){}},
+  save(){this.saveAll();return Promise.resolve();},
+  remove(){this.saveAll();return Promise.resolve();}
+};
+store=localStore;
+
+function setStatus(text,kind){const el=document.getElementById("status");el.textContent=text;el.className="status"+(kind==="local"?" local":"");}
+
+const pending={}; const timers={};
+function scheduleSave(p){
+  if(p.example){ // first edit turns the example into a real saved property
+    p.example=false; p.id=uid(); currentId=p.id;
+  }
+  p.updated=Date.now();
+  clearTimeout(timers[p.id]);
+  timers[p.id]=setTimeout(()=>flushSave(p.id),700);
+}
+function flushSave(id){
+  const p=props.find(x=>x.id===id); if(!p) return;
+  const prev=pending[id]||Promise.resolve();
+  pending[id]=prev.then(()=>{
+    if(store.kind==="db") setStatus("Saving…","db");
+    return store.save(p).then(()=>{ if(store.kind==="db") setStatus("Saved to your account","db"); })
+      .catch(()=>{ setStatus("Saved in this browser only","local"); store=localStore; localStore.saveAll(); });
+  });
+}
+
+function cleanForSave(p){return {name:p.name||"",type:p.type,price:p.price||"",visited:p.visited||"",notes:p.notes||"",ratings:p.ratings||{},updated:p.updated||Date.now()};}
+
+async function connectDb(){
+  if(!window.claude || typeof window.claude.use!=="function") return;
+  try{
+    const db=await window.claude.use("db"); const user=await window.claude.use("user");
+    if(!db||!user) return;
+    const id=await user.id(); if(!id) return;
+    const col=db.collection("data/users/"+id);
+    const timer=setTimeout(()=>setStatus("Can't reach your account yet, saving in this browser","local"),10000);
+    const dbStore={kind:"db",
+      save(p){return col.doc(p.id).set(cleanForSave(p));},
+      remove(id2){return col.doc(id2).delete();}
+    };
+    col.onSnapshot(snap=>{
+      clearTimeout(timer);
+      if(store!==dbStore){
+        store=dbStore; setStatus("Saved to your account","db");
+        // move anything kept only in this browser into the account, once
+        const localOnly=localStore.load().filter(lp=>!snap.docs.some(d=>d.id===lp.id));
+        localOnly.forEach(lp=>{ col.doc(lp.id).set(cleanForSave(lp)).catch(()=>{}); });
+        if(localOnly.length){ try{localStorage.removeItem(LS_KEY);}catch(e){} }
+      }
+      const remote=snap.docs.map(d=>Object.assign({id:d.id},d.data()));
+      // keep in-progress local edits that haven't been written yet
+      const merged=remote.map(rp=>{const lp=props.find(x=>x.id===rp.id); return (lp && timers[rp.id] && lp.updated>(rp.updated||0))?lp:rp;});
+      props.filter(lp=>!lp.example && !merged.some(m=>m.id===lp.id) && timers[lp.id]).forEach(lp=>merged.push(lp));
+      const ex=props.find(p=>p.example);
+      props=merged.length?merged:(ex?[ex]:[structuredClone(EXAMPLE)]);
+      if(!current()) currentId=props[0].id;
+      render(true);
+    },()=>{ clearTimeout(timer); setStatus("Couldn't reach your account, saving in this browser","local"); store=localStore; });
+  }catch(e){ /* stay on local storage */ }
+}
+
+/* ---------- Rendering ---------- */
+const $=s=>document.querySelector(s);
+function el(tag,attrs,...kids){
+  const n=document.createElement(tag);
+  if(attrs) for(const k in attrs){
+    const v=attrs[k]; if(v==null||v===false) continue;
+    if(k==="class") n.className=v; else if(k.startsWith("on")) n.addEventListener(k.slice(2),v);
+    else if(k==="text") n.textContent=v; else n.setAttribute(k,v===true?"":v);
+  }
+  kids.flat().forEach(c=>{ if(c==null||c===false) return; n.append(c.nodeType?c:document.createTextNode(String(c))); });
+  return n;
+}
+const fmt=n=>n.toFixed(1);
+
+function renderList(){
+  const ul=$("#plist"); ul.replaceChildren();
+  const sorted=[...props].sort((a,b)=>(b.updated||0)-(a.updated||0));
+  if(!sorted.length){ul.append(el("li",{class:"empty"},"No properties yet."));return;}
+  sorted.forEach(p=>{
+    const s=scoreProperty(p);
+    ul.append(el("li",null,el("button",{class:"pcard",type:"button","aria-current":(view==="score"&&p.id===currentId)?"true":"false",
+      onclick:()=>{currentId=p.id;view="score";confirmDelete=false;openSections.clear();render();}},
+      el("span",{class:"pn"},p.name||"Untitled property"),
+      el("span",{class:"ps num"},el("b",null,fmt(s.self)),"inv "+fmt(s.inv)),
+      el("span",{class:"pt"},TYPES[p.type].label+(p.example?" · example":"")))));
+  });
+  $("#tabScore").setAttribute("aria-selected",view==="score");
+  $("#tabCompare").setAttribute("aria-selected",view==="compare");
+  $("#tabGuide").setAttribute("aria-selected",view==="guide");
+}
+
+function renderCompare(){
+  const sheet=$("#sheet"); sheet.replaceChildren();
+  const rows=[...props].map(p=>({p,s:scoreProperty(p)})).sort((a,b)=>b.s.self-a.s.self);
+  const tbody=el("tbody");
+  rows.forEach(({p,s})=>{
+    const gv=gateVerdict(s.gates);
+    tbody.append(el("tr",{class:"click",onclick:()=>{currentId=p.id;view="score";render();}},
+      el("td",null,el("b",null,p.name||"Untitled"),el("div",{class:"sum-sub"},p.price||"")),
+      el("td",null,TYPES[p.type].label),
+      el("td",{class:"n num"},fmt(s.self)),
+      el("td",{class:"n num"},fmt(s.inv)),
+      el("td",null,el("span",{class:"pill "+gv.c},gv.t)),
+      el("td",{class:"n num"},Math.round(100*s.known/s.total)+"%")));
+  });
+  sheet.append(el("section",{class:"panel compare"},
+    el("h2",{style:"font-size:1rem;margin-bottom:8px"},"All properties, best self-use score first"),
+    el("table",null,el("thead",null,el("tr",null,el("th",null,"Property"),el("th",null,"Type"),el("th",{class:"n"},"Self-use /100"),el("th",{class:"n"},"Investment /100"),el("th",null,"Gates"),el("th",{class:"n"},"Checked"))),tbody)));
+  sheet.append(legend());
+}
+
+function legend(){
+  return el("section",{class:"panel legend"},
+    el("div",null,el("b",null,"Rating: "),"5 excellent · 4 good · 3 acceptable · 2 below average · 1 poor · 0 deal-breaker · ? unknown (counted as 3)"),
+    el("div",null,el("b",null,"Section points"),"  = weight × average rating ÷ 5. Weights add to 100 for each score."),
+    el("div",null,el("b",null,"Gates: "),"a 0 on any gate means do not buy. An unchecked gate means no token money yet."),
+    el("div",null,el("b",null,"Bands: "),"80+ strong · 65–79 good · 50–64 borderline · below 50 skip"));
+}
+
+function renderScore(keepScroll){
+  const p=current(); const sheet=$("#sheet");
+  if(!p){sheet.replaceChildren(el("div",{class:"panel legend"},"Pick a property or add a new one."));return;}
+  const y=window.scrollY;
+  sheet.replaceChildren();
+  const t=TYPES[p.type]; const s=scoreProperty(p);
+
+  if(p.example){
+    sheet.append(el("div",{class:"banner"},el("span",null,"This is an example scored from your checklist doc. Rate anything to save it as your own."),
+      el("button",{class:"btn small",type:"button",onclick:newProperty},"Start a blank one")));
+  }
+
+  // meta fields
+  const meta=el("section",{class:"panel meta"});
+  const onField=(key)=>(e)=>{p[key]=e.target.value;scheduleSave(p);if(key==="name")renderList();};
+  meta.append(
+    el("div",{class:"field wide"},el("label",{for:"f-name"},"Property"),el("input",{id:"f-name",value:p.name||"",placeholder:"e.g. Prestige flat, 3rd floor, Kundalahalli",oninput:onField("name")})),
+    el("div",{class:"field"},el("label",{for:"f-type"},"Type"),(()=>{const sel=el("select",{id:"f-type",onchange:(e)=>{p.type=e.target.value;scheduleSave(p);openSections.clear();render();}});
+      Object.keys(TYPES).forEach(k=>sel.append(el("option",{value:k,selected:k===p.type},TYPES[k].label)));return sel;})()),
+    el("div",{class:"field"},el("label",{for:"f-price"},"Asking price"),el("input",{id:"f-price",value:p.price||"",placeholder:"₹ …",oninput:onField("price")})),
+    el("div",{class:"field"},el("label",{for:"f-date"},"Visited on"),el("input",{id:"f-date",type:"date",value:p.visited||"",onchange:onField("visited")})),
+    el("div",{class:"field wide"},el("label",{for:"f-notes"},"Notes"),el("textarea",{id:"f-notes",oninput:onField("notes")},p.notes||""))
+  );
+  sheet.append(meta);
+
+  // sticky score bar
+  sheet.append(scoreBar(s));
+
+  // sections
+  t.sections.forEach((sec,i)=>{
+    const ss=s.sections[i];
+    const d=el("details",{class:"panel section",open:openSections.has(sec.id)||null});
+    d.addEventListener("toggle",()=>{d.open?openSections.add(sec.id):openSections.delete(sec.id);});
+    d.append(el("summary",null,
+      el("h3",null,sec.id+". "+sec.name),
+      el("span",{class:"sum-pts num"},el("b",null,fmt(ss.ps)),"/"+sec.ws+" self",el("br"),fmt(ss.pi)+"/"+sec.wi+" inv"),
+      el("span",{class:"sum-sub"},`Weight ${sec.ws} self · ${sec.wi} inv · ${ss.rated}/${ss.count} rated · avg `,el("span",{class:"num"},ss.avg.toFixed(2)))));
+    const list=el("div",{class:"items"});
+    sec.items.forEach(it=>list.append(itemRow(p,it)));
+    d.append(list); sheet.append(d);
+  });
+
+  // delete
+  const del=el("div",{class:"confirm"});
+  if(!p.example){
+    if(!confirmDelete) del.append(el("button",{class:"btn danger small",type:"button",onclick:()=>{confirmDelete=true;render(true);}},"Delete this property"));
+    else del.append("Delete \""+(p.name||"Untitled")+"\" for good?",
+      el("button",{class:"btn danger small",type:"button",onclick:deleteCurrent},"Yes, delete"),
+      el("button",{class:"btn small",type:"button",onclick:()=>{confirmDelete=false;render(true);}},"Cancel"));
+  }
+  sheet.append(del, legend());
+  if(keepScroll) window.scrollTo(0,y);
+}
+
+function scoreBar(s){
+  const bs=band(s.self), bi=band(s.inv), gv=gateVerdict(s.gates);
+  const box=(lbl,v,b)=>el("div",{class:"score"},el("span",{class:"lbl"},lbl),
+    el("span",{class:"val num"},fmt(v),el("small",null," /100")),
+    el("span",{class:"meter"},el("i",{style:`width:${Math.max(0,Math.min(100,v))}%`})),
+    el("span",{class:"band c-"+b.c},b.t));
+  const prov=s.known<s.total?el("span",{class:"pill neutral"},`Provisional: ${s.total-s.known} of ${s.total} unknown`):el("span",{class:"pill good"},"Every item checked");
+  return el("section",{class:"panel scorebar",id:"scorebar"},box("Self-use",s.self,bs),box("Investment",s.inv,bi),
+    el("div",{class:"verdict"},el("span",{class:"pill "+gv.c},gv.t),prov));
+}
+
+function itemRow(p,it){
+  const v=(p.ratings||{})[it.id]; const has=typeof v==="number";
+  const row=el("div",{class:"item"+(it.gate?" gate":"")+(it.gate&&v===0?" fail":"")});
+  row.append(el("div",{class:"ihead"},el("span",null,el("span",{class:"iid num"},it.id),el("span",{class:"it"},it.check)),it.gate?el("span",{class:"gbadge",title:"Gate: a 0 here means do not buy"},"GATE"):null));
+  const rates=el("div",{class:"rates",role:"group","aria-label":"Rating for "+it.check});
+  const set=(val)=>{p.ratings=Object.assign({},p.ratings); if(val===null) delete p.ratings[it.id]; else p.ratings[it.id]=val; scheduleSave(p); refreshAfterRating();};
+  rates.append(el("button",{type:"button",class:"unk","aria-pressed":!has,title:"Unknown (counted as 3)",onclick:()=>set(null)},"?"));
+  [0,1,2,3,4,5].forEach(n=>rates.append(el("button",{type:"button",class:n===0?"zero":"","aria-pressed":has&&v===n,onclick:()=>set(n)},String(n))));
+  row.append(rates);
+  const open=openGuides.has(it.id);
+  row.append(el("button",{class:"guide-toggle",type:"button","aria-expanded":open,onclick:()=>{open?openGuides.delete(it.id):openGuides.add(it.id);render(true);}},open?"Hide guide":"What does 5 or 0 look like?"));
+  if(open) row.append(el("div",{class:"hint"},el("span",null,el("b",null,"5: "),it.five),el("span",null,el("b",null,"0–1: "),it.zero),el("span",null,el("b",null,"Ask for: "),it.ask)));
+  return row;
+}
+
+function refreshAfterRating(){ render(true); }
+
+let guideType="resale";
+function renderGuide(){
+  const sheet=$("#sheet"); sheet.replaceChildren();
+  const g=el("section",{class:"panel guide"});
+  const t=TYPES[guideType];
+  const wt=el("tbody");
+  t.sections.forEach(s=>wt.append(el("tr",null,el("td",null,s.id+". "+s.name),el("td",{class:"n num"},s.ws),el("td",{class:"n num"},s.wi),el("td",{class:"n num"},s.items.length),el("td",{class:"n num"},s.items.filter(i=>i.gate).length))));
+  const typeBtns=el("div",{class:"guide-types"});
+  Object.keys(TYPES).forEach(k=>typeBtns.append(el("button",{type:"button",class:"btn small"+(k===guideType?" primary":""),onclick:()=>{guideType=k;renderGuide();}},TYPES[k].label)));
+  g.append(
+    el("h2",null,"How to use the Property Scorer"),
+    el("p",null,"Score every property you visit on the same checklist, so you compare them on facts instead of the sales pitch. Each property gets two scores out of 100: one for living in it yourself, one as an investment."),
+
+    el("h3",null,"1. Before the visit"),
+    el("ol",null,
+      el("li",null,"Tap + New, name the property and pick its type: resale flat, new flat, plot or independent house."),
+      el("li",null,"Open the Legal section first and note which documents to ask for. Every item's \"What does 5 or 0 look like?\" link shows what to request."),
+      el("li",null,"Plan to arrive at peak hour (around 9 am or 6 pm) so you can rate the commute and traffic honestly.")),
+
+    el("h3",null,"2. During the visit"),
+    el("ol",null,
+      el("li",null,"Go section by section and tap a rating for each item. Leave it on ? if you can't check it yet."),
+      el("li",null,"Ask the seller, builder or association for proof: a document, a bill, a number. A verbal answer is not enough for a 4 or 5."),
+      el("li",null,"Talk to two or three residents or neighbours. They will tell you about water, flooding and the association.")),
+
+    el("h3",null,"3. Rating scale"),
+    el("ul",null,
+      el("li",null,el("b",null,"5")," excellent · ",el("b",null,"4")," good · ",el("b",null,"3")," acceptable · ",el("b",null,"2")," below average · ",el("b",null,"1")," poor · ",el("b",null,"0")," deal-breaker"),
+      el("li",null,el("b",null,"?")," unknown. It counts as 3, so one missing check doesn't sink or inflate the score. The score shows as provisional until everything is checked.")),
+
+    el("h3",null,"4. Gates"),
+    el("p",null,"Items marked GATE are must-pass legal and structural checks, such as clean title, khata, OC and structure. A 0 on any gate means do not buy, however high the score. A gate left on ? means do not pay any token or booking amount yet. A gate rated 1–2 needs a lawyer's or engineer's opinion before you go further."),
+
+    el("h3",null,"5. How the score is calculated"),
+    el("p",null,"Each section's points are its weight × the average rating ÷ 5. The section points add up to the total. Weights differ by property type and by purpose: location counts most for living in it, rent and resale count most for investment."),
+    typeBtns,
+    el("div",{class:"tw"},el("table",null,el("thead",null,el("tr",null,el("th",null,"Section"),el("th",{class:"n"},"Self-use"),el("th",{class:"n"},"Investment"),el("th",{class:"n"},"Items"),el("th",{class:"n"},"Gates"))),wt)),
+
+    el("h3",null,"6. Reading the result"),
+    el("ul",null,
+      el("li",null,el("b",null,"80–100 Strong: "),"buy if all gates pass and the price matches recent registered sales."),
+      el("li",null,el("b",null,"65–79 Good: "),"negotiate using the lowest-scoring sections as your reasons."),
+      el("li",null,el("b",null,"50–64 Borderline: "),"buy only with a clear discount or a fix for the weak areas."),
+      el("li",null,el("b",null,"Below 50 Skip: "),"keep looking.")),
+    el("p",{class:"muted"},"If you plan to live there, decide on the self-use score. Use the investment score as a tie-breaker, or when you are buying to rent out."),
+
+    el("h3",null,"7. After the visit"),
+    el("ol",null,
+      el("li",null,"Replace every ? with a real rating once documents and inspections come back. Re-check the gates first."),
+      el("li",null,"Use the Compare tab to rank every property you've scored."),
+      el("li",null,"Use the sections with the lowest points as your list of negotiation points.")),
+    el("p",{class:"muted"},"This tool helps you organise your own checks. It is not legal or financial advice: get a property lawyer's written opinion before you pay anything.")
+  );
+  sheet.append(g);
+}
+
+function render(keepScroll){
+  renderList();
+  if(view==="compare") renderCompare(); else if(view==="guide") renderGuide(); else renderScore(keepScroll);
+}
+
+function newProperty(){
+  const p={id:uid(),name:"",type:(current()&&current().type)||"resale",price:"",visited:new Date().toISOString().slice(0,10),notes:"",ratings:{},updated:Date.now()};
+  props=props.filter(x=>!x.example); props.push(p); currentId=p.id; view="score"; confirmDelete=false; openSections=new Set([TYPES[p.type].sections[0].id]);
+  flushSave(p.id); render(); const f=document.getElementById("f-name"); if(f) f.focus();
+}
+function deleteCurrent(){
+  const p=current(); if(!p) return; clearTimeout(timers[p.id]); delete timers[p.id];
+  props=props.filter(x=>x.id!==p.id);
+  store.remove(p.id).catch(()=>{});
+  if(!props.length) props=[structuredClone(EXAMPLE)];
+  currentId=props[0].id; confirmDelete=false; render();
+}
+
+document.getElementById("newBtn").addEventListener("click",newProperty);
+document.getElementById("tabScore").addEventListener("click",()=>{view="score";render();});
+document.getElementById("tabCompare").addEventListener("click",()=>{view="compare";render();});
+document.getElementById("tabGuide").addEventListener("click",()=>{view="guide";const c=current();if(c)guideType=c.type;render();});
+
+/* ---------- Start ---------- */
+props=localStore.load();
+if(!props.length) props=[structuredClone(EXAMPLE)];
+currentId=props[0].id;
+openSections=new Set([TYPES[props[0].type].sections[0].id]);
+render();
+connectDb();
+</script>
+</body>
+</html>
